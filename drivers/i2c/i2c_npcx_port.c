@@ -50,15 +50,11 @@ struct i2c_npcx_port_config {
 	const struct device *i2c_ctrl;
 };
 
-/* Driver convenience defines */
-#define DRV_CONFIG(dev) \
-	((const struct i2c_npcx_port_config *)(dev)->config)
-
 /* I2C api functions */
 static int i2c_npcx_port_configure(const struct device *dev,
 							uint32_t dev_config)
 {
-	const struct i2c_npcx_port_config *const config = DRV_CONFIG(dev);
+	const struct i2c_npcx_port_config *const config = dev->config;
 
 	if (config->i2c_ctrl == NULL) {
 		LOG_ERR("Cannot find i2c controller on port%02x!",
@@ -78,10 +74,29 @@ static int i2c_npcx_port_configure(const struct device *dev,
 	return npcx_i2c_ctrl_configure(config->i2c_ctrl, dev_config);
 }
 
+static int i2c_npcx_port_get_config(const struct device *dev, uint32_t *dev_config)
+{
+	const struct i2c_npcx_port_config *const config = dev->config;
+	uint32_t speed;
+	int ret;
+
+	if (config->i2c_ctrl == NULL) {
+		LOG_ERR("Cannot find i2c controller on port%02x!", config->port);
+		return -EIO;
+	}
+
+	ret = npcx_i2c_ctrl_get_speed(config->i2c_ctrl, &speed);
+	if (!ret) {
+		*dev_config = (I2C_MODE_MASTER | speed);
+	}
+
+	return ret;
+}
+
 static int i2c_npcx_port_transfer(const struct device *dev,
 		struct i2c_msg *msgs, uint8_t num_msgs, uint16_t addr)
 {
-	const struct i2c_npcx_port_config *const config = DRV_CONFIG(dev);
+	const struct i2c_npcx_port_config *const config = dev->config;
 	int ret = 0;
 	int idx_ctrl = (config->port & 0xF0) >> 4;
 	int idx_port = (config->port & 0x0F);
@@ -111,7 +126,7 @@ static int i2c_npcx_port_transfer(const struct device *dev,
 /* I2C driver registration */
 static int i2c_npcx_port_init(const struct device *dev)
 {
-	const struct i2c_npcx_port_config *const config = DRV_CONFIG(dev);
+	const struct i2c_npcx_port_config *const config = dev->config;
 	uint32_t i2c_config;
 	int ret;
 
@@ -130,6 +145,7 @@ static int i2c_npcx_port_init(const struct device *dev)
 
 static const struct i2c_driver_api i2c_port_npcx_driver_api = {
 	.configure = i2c_npcx_port_configure,
+	.get_config = i2c_npcx_port_get_config,
 	.transfer = i2c_npcx_port_transfer,
 };
 

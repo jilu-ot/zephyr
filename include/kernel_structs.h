@@ -28,6 +28,7 @@
 #include <sys/util.h>
 #include <sys/sys_heap.h>
 #include <arch/structs.h>
+#include <kernel/stats.h>
 #endif
 
 #ifdef __cplusplus
@@ -128,6 +129,20 @@ struct _cpu {
 #ifdef CONFIG_SMP
 	/* True when _current is allowed to context switch */
 	uint8_t swap_ok;
+#endif
+
+#ifdef CONFIG_SCHED_THREAD_USAGE
+	/*
+	 * [usage0] is used as a timestamp to mark the beginning of an
+	 * execution window. [0] is a special value indicating that it
+	 * has been stopped (but not disabled).
+	 */
+
+	uint32_t usage0;
+
+#ifdef CONFIG_SCHED_THREAD_USAGE_ALL
+	struct k_cycle_stats usage;
+#endif
 #endif
 
 	/* Per CPU architecture specifics */

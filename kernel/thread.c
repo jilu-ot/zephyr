@@ -31,10 +31,6 @@
 #include <logging/log.h>
 LOG_MODULE_DECLARE(os, CONFIG_KERNEL_LOG_LEVEL);
 
-#ifdef CONFIG_THREAD_RUNTIME_STATS
-k_thread_runtime_stats_t threads_runtime_stats;
-#endif
-
 #ifdef CONFIG_THREAD_MONITOR
 /* This lock protects the linked list of active threads; i.e. the
  * initial _kernel.threads pointer and the linked list made up of
@@ -605,11 +601,13 @@ char *z_setup_new_thread(struct k_thread *new_thread,
 #endif
 	new_thread->resource_pool = _current->resource_pool;
 
-	SYS_PORT_TRACING_OBJ_FUNC(k_thread, create, new_thread);
-
-#ifdef CONFIG_THREAD_RUNTIME_STATS
-	memset(&new_thread->rt_stats, 0, sizeof(new_thread->rt_stats));
+#ifdef CONFIG_SCHED_THREAD_USAGE
+	new_thread->base.usage = (struct k_cycle_stats) {};
+	new_thread->base.usage.track_usage =
+		CONFIG_SCHED_THREAD_USAGE_AUTO_ENABLE;
 #endif
+
+	SYS_PORT_TRACING_OBJ_FUNC(k_thread, create, new_thread);
 
 	return stack_ptr;
 }
@@ -1006,67 +1004,27 @@ static inline k_ticks_t z_vrfy_k_thread_timeout_expires_ticks(
 #ifdef CONFIG_INSTRUMENT_THREAD_SWITCHING
 void z_thread_mark_switched_in(void)
 {
+#if defined(CONFIG_SCHED_THREAD_USAGE) && !defined(CONFIG_USE_SWITCH)
+	z_sched_usage_start(_current);
+#endif
+
 #ifdef CONFIG_TRACING
 	SYS_PORT_TRACING_FUNC(k_thread, switched_in);
 #endif
-
-#ifdef CONFIG_THREAD_RUNTIME_STATS
-	struct k_thread *thread;
-
-	thread = k_current_get();
-#ifdef CONFIG_THREAD_RUNTIME_STATS_USE_TIMING_FUNCTIONS
-	thread->rt_stats.last_switched_in = timing_counter_get();
-#else
-	thread->rt_stats.last_switched_in = k_cycle_get_32();
-#endif /* CONFIG_THREAD_RUNTIME_STATS_USE_TIMING_FUNCTIONS */
-
-#endif /* CONFIG_THREAD_RUNTIME_STATS */
 }
 
 void z_thread_mark_switched_out(void)
 {
-#ifdef CONFIG_THREAD_RUNTIME_STATS
-#ifdef CONFIG_THREAD_RUNTIME_STATS_USE_TIMING_FUNCTIONS
-	timing_t now;
-#else
-	uint32_t now;
-#endif /* CONFIG_THREAD_RUNTIME_STATS_USE_TIMING_FUNCTIONS */
-
-	uint64_t diff;
-	struct k_thread *thread;
-
-	thread = k_current_get();
-
-	if (unlikely(thread->rt_stats.last_switched_in == 0)) {
-		/* Has not run before */
-		return;
-	}
-
-	if (unlikely(thread->base.thread_state == _THREAD_DUMMY)) {
-		/* dummy thread has no stat struct */
-		return;
-	}
-
-#ifdef CONFIG_THREAD_RUNTIME_STATS_USE_TIMING_FUNCTIONS
-	now = timing_counter_get();
-	diff = timing_cycles_get(&thread->rt_stats.last_switched_in, &now);
-#else
-	now = k_cycle_get_32();
-	diff = (uint64_t)(now - thread->rt_stats.last_switched_in);
-	thread->rt_stats.last_switched_in = 0;
-#endif /* CONFIG_THREAD_RUNTIME_STATS_USE_TIMING_FUNCTIONS */
-
-	thread->rt_stats.stats.execution_cycles += diff;
-
-	threads_runtime_stats.execution_cycles += diff;
-#endif /* CONFIG_THREAD_RUNTIME_STATS */
+#if defined(CONFIG_SCHED_THREAD_USAGE) && !defined(CONFIG_USE_SWITCH)
+	z_sched_usage_stop();
+#endif
 
 #ifdef CONFIG_TRACING
 	SYS_PORT_TRACING_FUNC(k_thread, switched_out);
 #endif
 }
+#endif /* CONFIG_INSTRUMENT_THREAD_SWITCHING */
 
-#ifdef CONFIG_THREAD_RUNTIME_STATS
 int k_thread_runtime_stats_get(k_tid_t thread,
 			       k_thread_runtime_stats_t *stats)
 {
@@ -1074,23 +1032,42 @@ int k_thread_runtime_stats_get(k_tid_t thread,
 		return -EINVAL;
 	}
 
-	(void)memcpy(stats, &thread->rt_stats.stats,
-		     sizeof(thread->rt_stats.stats));
+#ifdef CONFIG_SCHED_THREAD_USAGE
+	z_sched_thread_usage(thread, stats);
+#else
+	*stats = (k_thread_runtime_stats_t) {};
+#endif
 
 	return 0;
 }
 
 int k_thread_runtime_stats_all_get(k_thread_runtime_stats_t *stats)
 {
+#ifdef CONFIG_SCHED_THREAD_USAGE_ALL
+	k_thread_runtime_stats_t  tmp_stats;
+#endif
+
 	if (stats == NULL) {
 		return -EINVAL;
 	}
 
-	(void)memcpy(stats, &threads_runtime_stats,
-		     sizeof(threads_runtime_stats));
+	*stats = (k_thread_runtime_stats_t) {};
+
+#ifdef CONFIG_SCHED_THREAD_USAGE_ALL
+	/* Retrieve the usage stats for each core and amalgamate them. */
+
+	for (uint8_t i = 0; i < CONFIG_MP_NUM_CPUS; i++) {
+		z_sched_cpu_usage(i, &tmp_stats);
+
+		stats->execution_cycles += tmp_stats.execution_cycles;
+		stats->total_cycles     += tmp_stats.total_cycles;
+#ifdef CONFIG_SCHED_THREAD_USAGE_ANALYSIS
+		stats->peak_cycles      += tmp_stats.peak_cycles;
+		stats->average_cycles   += tmp_stats.average_cycles;
+#endif
+		stats->idle_cycles      += tmp_stats.idle_cycles;
+	}
+#endif
 
 	return 0;
 }
-#endif /* CONFIG_THREAD_RUNTIME_STATS */
-
-#endif /* CONFIG_INSTRUMENT_THREAD_SWITCHING */

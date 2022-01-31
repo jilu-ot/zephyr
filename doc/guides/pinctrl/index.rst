@@ -272,14 +272,14 @@ particular state are enclosed in a single Devicetree node.
     &pinctrl {
         /* Node with pin configuration for default state */
         periph0_default: periph0_default {
-            pins1 {
+            group1 {
                 /* Mappings: PERIPH0_SIGA -> PX0, PERIPH0_SIGC -> PZ1 */
                 pinmux = <PERIPH0_SIGA_PX0>, <PERIPH0_SIGC_PZ1>;
                 /* Pins PX0 and PZ1 have pull-up enabled */
                 bias-pull-up;
             };
             ...
-            pinsN {
+            groupN {
                 /* Mappings: PERIPH0_SIGB -> PY7 */
                 pinmux = <PERIPH0_SIGB_PY7>;
             };
@@ -310,19 +310,21 @@ autogeneration is not an option.
      * This file is optional, but recommended.
      */
 
-    /* Mapping for PERIPH0_SIGA -> PX0, to be used for default state */
-    periph0_siga_px0_default: periph0_siga_px0_default {
-        pinmux = <VNDSOC_PIN(X, 0, MUX0)>;
-    };
+    &pinctrl {
+        /* Mapping for PERIPH0_SIGA -> PX0, to be used for default state */
+        periph0_siga_px0_default: periph0_siga_px0_default {
+            pinmux = <VNDSOC_PIN(X, 0, MUX0)>;
+        };
 
-    /* Mapping for PERIPH0_SIGB -> PY7, to be used for default state */
-    periph0_sigb_py7_default: periph0_sigb_py7_default {
-        pinmux = <VNDSOC_PIN(Y, 7, MUX4)>;
-    };
+        /* Mapping for PERIPH0_SIGB -> PY7, to be used for default state */
+        periph0_sigb_py7_default: periph0_sigb_py7_default {
+            pinmux = <VNDSOC_PIN(Y, 7, MUX4)>;
+        };
 
-    /* Mapping for PERIPH0_SIGC -> PZ1, to be used for default state */
-    periph0_sigc_pz1_default: periph0_sigc_pz1_default {
-        pinmux = <VNDSOC_PIN(Z, 1, MUX2)>;
+        /* Mapping for PERIPH0_SIGC -> PZ1, to be used for default state */
+        periph0_sigc_pz1_default: periph0_sigc_pz1_default {
+            pinmux = <VNDSOC_PIN(Z, 1, MUX2)>;
+        };
     };
 
 .. code-block:: devicetree
@@ -471,7 +473,7 @@ The example below contains a complete example of a device driver that uses the
 
     #define MYDEV_DEFINE(i)                                                    \
         /* Define all pinctrl configuration for instance "i" */                \
-        PINCTRL_DT_INST_DEFINE(i)                                              \
+        PINCTRL_DT_INST_DEFINE(i);                                             \
         ...                                                                    \
         static const struct mydev_config mydev_config_##i = {                  \
             ...                                                                \
@@ -482,7 +484,7 @@ The example below contains a complete example of a device driver that uses the
         ...                                                                    \
                                                                                \
         DEVICE_DT_INST_DEFINE(i, mydev_init, NULL, &mydev_data##i,             \
-                              &mydev_config##i, ...)
+                              &mydev_config##i, ...);
 
     DT_INST_FOREACH_STATUS_OKAY(MYDEV_DEFINE)
 

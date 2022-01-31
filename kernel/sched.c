@@ -17,6 +17,8 @@
 #include <logging/log.h>
 #include <sys/atomic.h>
 #include <sys/math_extras.h>
+#include <timing/timing.h>
+
 LOG_MODULE_DECLARE(os, CONFIG_KERNEL_LOG_LEVEL);
 
 #if defined(CONFIG_SCHED_DUMB)
@@ -35,6 +37,10 @@ LOG_MODULE_DECLARE(os, CONFIG_KERNEL_LOG_LEVEL);
 #define _priq_run_add		z_priq_mq_add
 #define _priq_run_remove	z_priq_mq_remove
 #define _priq_run_best		z_priq_mq_best
+static ALWAYS_INLINE void z_priq_mq_add(struct _priq_mq *pq,
+					struct k_thread *thread);
+static ALWAYS_INLINE void z_priq_mq_remove(struct _priq_mq *pq,
+					   struct k_thread *thread);
 #endif
 
 #if defined(CONFIG_WAITQ_SCALABLE)
@@ -51,6 +57,7 @@ struct k_spinlock sched_spinlock;
 
 static void update_cache(int preempt_ok);
 static void end_thread(struct k_thread *thread);
+
 
 static inline int is_preempt(struct k_thread *thread)
 {
@@ -171,7 +178,8 @@ static ALWAYS_INLINE struct k_thread *_priq_dumb_mask_best(sys_dlist_t *pq)
 }
 #endif
 
-ALWAYS_INLINE void z_priq_dumb_add(sys_dlist_t *pq, struct k_thread *thread)
+static ALWAYS_INLINE void z_priq_dumb_add(sys_dlist_t *pq,
+					  struct k_thread *thread)
 {
 	struct k_thread *t;
 
@@ -274,12 +282,12 @@ void z_requeue_current(struct k_thread *curr)
 		runq_add(curr);
 	}
 }
-#endif
 
 static inline bool is_aborting(struct k_thread *thread)
 {
 	return (thread->base.thread_state & _THREAD_ABORTING) != 0U;
 }
+#endif
 
 static ALWAYS_INLINE struct k_thread *next_up(void)
 {
@@ -914,6 +922,7 @@ struct k_thread *z_swap_next_thread(void)
 #endif
 }
 
+#ifdef CONFIG_USE_SWITCH
 /* Just a wrapper around _current = xxx with tracing */
 static inline void set_current(struct k_thread *new_thread)
 {
@@ -921,7 +930,6 @@ static inline void set_current(struct k_thread *new_thread)
 	_current_cpu->current = new_thread;
 }
 
-#ifdef CONFIG_USE_SWITCH
 void *z_get_next_switch_handle(void *interrupted)
 {
 	z_check_stack_sentinel();
@@ -936,6 +944,8 @@ void *z_get_next_switch_handle(void *interrupted)
 			old_thread->switch_handle = NULL;
 		}
 		new_thread = next_up();
+
+		z_sched_usage_switch(new_thread);
 
 		if (old_thread != new_thread) {
 			update_metairq_preempt(new_thread);
@@ -976,6 +986,7 @@ void *z_get_next_switch_handle(void *interrupted)
 	}
 	return ret;
 #else
+	z_sched_usage_switch(_kernel.ready_q.cache);
 	_current->switch_handle = interrupted;
 	set_current(_kernel.ready_q.cache);
 	return _current->switch_handle;
@@ -1070,9 +1081,9 @@ struct k_thread *z_priq_rb_best(struct _priq_rb *pq)
 # if (K_LOWEST_THREAD_PRIO - K_HIGHEST_THREAD_PRIO) > 31
 # error Too many priorities for multiqueue scheduler (max 32)
 # endif
-#endif
 
-ALWAYS_INLINE void z_priq_mq_add(struct _priq_mq *pq, struct k_thread *thread)
+static ALWAYS_INLINE void z_priq_mq_add(struct _priq_mq *pq,
+					struct k_thread *thread)
 {
 	int priority_bit = thread->base.prio - K_HIGHEST_THREAD_PRIO;
 
@@ -1080,7 +1091,8 @@ ALWAYS_INLINE void z_priq_mq_add(struct _priq_mq *pq, struct k_thread *thread)
 	pq->bitmask |= BIT(priority_bit);
 }
 
-ALWAYS_INLINE void z_priq_mq_remove(struct _priq_mq *pq, struct k_thread *thread)
+static ALWAYS_INLINE void z_priq_mq_remove(struct _priq_mq *pq,
+					   struct k_thread *thread)
 {
 	int priority_bit = thread->base.prio - K_HIGHEST_THREAD_PRIO;
 
@@ -1089,6 +1101,7 @@ ALWAYS_INLINE void z_priq_mq_remove(struct _priq_mq *pq, struct k_thread *thread
 		pq->bitmask &= ~BIT(priority_bit);
 	}
 }
+#endif
 
 struct k_thread *z_priq_mq_best(struct _priq_mq *pq)
 {

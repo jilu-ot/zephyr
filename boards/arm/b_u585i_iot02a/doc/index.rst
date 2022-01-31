@@ -139,6 +139,7 @@ They operate at a frequency of up to 160 MHz.
 
 - CRC calculation unit
 - Development support: serial wire debug (SWD), JTAG, Embedded Trace Macrocell |trade|
+- True Random Number Generator (RNG)
 
 - Graphic features
 
@@ -175,17 +176,63 @@ The Zephyr b_u585i_iot02a board configuration supports the following hardware fe
 +-----------+------------+-------------------------------------+
 | GPIO      | on-chip    | gpio                                |
 +-----------+------------+-------------------------------------+
+| RNG       | on-chip    | True Random number generator        |
++-------------+------------+-----------------------------------+
 | I2C       | on-chip    | i2c                                 |
 +-----------+------------+-------------------------------------+
 | SPI       | on-chip    | spi                                 |
 +-----------+------------+-------------------------------------+
 | DAC       | on-chip    | dac                                 |
 +-----------+------------+-------------------------------------+
+| ADC       | on-chip    | adc                                 |
++-----------+------------+-------------------------------------+
+| WATCHDOG  | on-chip    | independent watchdog                |
++-----------+------------+-------------------------------------+
+| USB       | on-chip    | usb_device                          |
++-----------+------------+-------------------------------------+
 
 The default configuration can be found in the defconfig file:
 
 	``boards/arm/b_u585i_iot02a/b_u585i_iot02a_defconfig``
 
+Zephyr board options
+====================
+
+The STM32U585i is an SoC with Cortex-M33 architecture. Zephyr provides support
+for building for both Secure and Non-Secure firmware.
+
+The BOARD options are summarized below:
+
++----------------------+-----------------------------------------------+
+|   BOARD              | Description                                   |
++======================+===============================================+
+| b_u585i_iot02a       | For building Secure (or Secure-only) firmware |
++----------------------+-----------------------------------------------+
+| b_u585i_iot02a_ns    | For building Non-Secure firmware              |
++----------------------+-----------------------------------------------+
+
+Here are the instructions to build Zephyr with a non-secure configuration,
+using `tfm_ipc_` sample:
+
+   .. code-block:: bash
+
+      $ west build -b b_u585i_iot02a_ns samples/tfm_integration/tfm_ipc/
+
+Once done, before flashing, you need to first run a generated script that
+will set platform option bytes config and erase platform (among others,
+option bit TZEN will be set).
+
+   .. code-block:: bash
+
+      $ ./build/tfm/regression.sh
+      $ west flash
+
+Please note that, after having run a TFM sample on the board, you will need to
+run `./build/tfm/regression.sh` once more to clean up the board from secure
+options and get back the platform back to a "normal" state and be able to run
+usual, non-TFM, binaries.
+Also note that, even then, TZEN will remain set, and you will need to use
+STM32CubeProgrammer_ to disable it fully, if required.
 
 Connections and IOs
 ===================
@@ -206,6 +253,8 @@ Default Zephyr Peripheral Mapping:
 - I2C_1 SDA/SDL : PB9/PB8 (Arduino I2C)
 - I2C_2 SDA/SDL : PH5/PH4
 - DAC1 CH1 : PA4 (STMOD+1)
+- ADC1_IN15 : PB0
+- USB OTG : PA11/PA12
 
 System Clock
 ------------
